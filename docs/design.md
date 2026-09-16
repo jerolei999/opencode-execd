@@ -2,33 +2,45 @@
 
 ## Goal
 
-Provide the deployable, fixed-image SaaS execution service behind the OpenCode plugin. The plugin itself is maintained in the separate [opencode-execd-plugin](https://github.com/jerolei999/opencode-execd-plugin) repository; this service transparently receives every shell command from that plugin and delegates it to a colocated OpenSandbox `execd` process. A service replica may execute several OpenCode sessions concurrently. CubeFS supplies the shared workspace, so the worker only validates and forwards absolute workspace paths.
+Provide a standalone execution sandbox service: one deployable, fixed image that runs the official
+OpenSandbox `execd` daemon plus the small amount of admission, path policy, and output normalization
+needed to serve command execution over HTTP. It embeds `execd`, the in-container data plane, and
+deliberately does not deploy the OpenSandbox Server control plane, which would need Docker or
+Kubernetes privileges to create sandbox containers. A service replica may execute several sessions
+concurrently, and it neither creates nor manages containers.
 
-This project intentionally does not deploy the OpenSandbox control plane and does not create nested containers. It is designed for platforms that can deploy an ordinary private image but cannot grant a Docker socket, privileged mode, writable cgroups, or Kubernetes API access.
+The reference client is the OpenCode plugin in the separate
+[opencode-execd-plugin](https://github.com/jerolei999/opencode-execd-plugin) repository; the service
+contract is generic, so any client that can send JSON over HTTP can use it. Shared storage supplies
+the workspace, so the worker only validates and forwards absolute workspace paths. Placement,
+authentication, session lifecycle, and routing stay outside this service.
 
 ## Boundary
 
 ```text
-OpenCodeBridge (existing auth/control plane)
+client (plugin, CLI, or any tooling)
+        |  POST /execute, POST /release, GET /health
+        v
+Execd Worker service  (one container = one sandbox)
+        |  admission, path policy, concurrency, session dirs
+        v
+OpenSandbox execd :44772
         |
         v
-OpenCode server + plugin ---- POST /execute ----> Execd Worker service
-                                          | admission, path policy,
-                                          | concurrency, session dirs
-                                          v
-                                  OpenSandbox execd :44772
-                                          |
-                                          v
-                                  shell process on CubeFS
+shell process on the mounted workspace
 ```
 
-The Bridge remains unchanged and command bytes do not pass through it. The plugin calls the configured internal execution-service URL directly. The SaaS service or its load balancer spreads stateless command requests across replicas.
+Command bytes go straight from the client to this service and never through an intermediate control
+plane. Replicas are interchangeable for admission, but they are not interchangeable for session
+state: `/execute` and `/release` for one session must reach the same replica, so a load balancer in
+front of several replicas has to keep sessions pinned.
+
 
 ## Deployment model
 
 - One image contains Bun, the worker service, and the official OpenSandbox `execd` binary.
 - One deployed replica is one execution node. `OPENCODE_WORKER_CAPACITY` controls concurrent commands per replica.
-- Multiple logical sessions share the replica's kernel and image. Each session receives deterministic `HOME` and temp paths, while its supplied workspace path resolves under `OPENCODE_WORKSPACE_ROOT` (the CubeFS mount).
+- Multiple logical sessions share the replica's kernel and image. Each session receives deterministic `HOME` and temp paths, while its supplied workspace path resolves under `OPENCODE_WORKSPACE_ROOT` (the shared workspace mount).
 - Scaling the SaaS service creates physical replicas. The plugin uses one stable internal service URL; normal SaaS load balancing distributes requests.
 - The image uses the stateless `execd /command` API. OpenCode already sends full command, cwd, shell, and environment on every invocation; persistent shell state is neither required nor implied by the existing worker contract.
 
@@ -44,11 +56,11 @@ The Bridge remains unchanged and command bytes do not pass through it. The plugi
 
 ## Security and resource semantics
 
-This is a multi-tenant execution pool, not a hostile-code security boundary. Sessions can be separated by directories and admission state, but they share a Unix identity, process namespace, network namespace, and the replica's CPU/memory limits. CubeFS permissions remain the authoritative filesystem boundary.
+This is a multi-tenant execution pool, not a hostile-code security boundary. Sessions can be separated by directories and admission state, but they share a Unix identity, process namespace, network namespace, and the replica's CPU/memory limits. The shared storage's own permissions remain the authoritative filesystem boundary.
 
 The practical controls are:
 
-- absolute workdirs constrained beneath one configured CubeFS root;
+- absolute workdirs constrained beneath one configured workspace root;
 - optional bearer authentication on the worker API and a separate loopback-only execd token;
 - one active command per OpenCode session;
 - bounded node concurrency and bounded captured output;
@@ -59,7 +71,7 @@ Per-session hard CPU quotas require platform cgroups, separate containers, or a 
 
 ## Compatibility
 
-The OpenCode-side plugin is maintained in the separate [opencode-execd-plugin](https://github.com/jerolei999/opencode-execd-plugin) repository and only depends on the contract below.
+The reference client is maintained in the separate [opencode-execd-plugin](https://github.com/jerolei999/opencode-execd-plugin) repository and only depends on the contract below. No client, OpenCode Core, or control-plane change is required to adopt this service.
 
 The execution service retains the small worker HTTP contract:
 
@@ -67,13 +79,13 @@ The execution service retains the small worker HTTP contract:
 - `POST /execute`
 - `POST /release`
 
-The plugin supplies optional bearer authentication and maps the native OpenCode bash arguments (`command`, `timeout`, and `workdir`) to this contract. OpenCode Core and Bridge need no code changes. File tools stay local and operate on the same CubeFS mount.
+The plugin supplies optional bearer authentication and maps the native OpenCode bash arguments (`command`, `timeout`, and `workdir`) to this contract. OpenCode Core needs no code changes. File tools stay local and operate on the same mounted workspace.
 
 ## Operations
 
 - Readiness fails when `execd` is unreachable.
 - SIGTERM cancels active executions before the replica exits.
-- Session home/temp data is node-local and removed by `/release`; project data remains on CubeFS.
+- Session home/temp data is node-local and removed by `/release`; project data remains on the shared mount.
 - Metrics initially expose worker capacity in `/health`; platform CPU/memory metrics remain available at the replica level, and raw execd metrics stay on loopback.
 
 ## Upstream references
