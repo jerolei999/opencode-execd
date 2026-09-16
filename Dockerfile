@@ -1,4 +1,4 @@
-ARG OPENSANDBOX_EXECD_IMAGE=ghcr.io/opensandbox-group/opensandbox/execd:v1.1.0
+ARG OPENSANDBOX_EXECD_IMAGE=docker.io/opensandbox/execd:v1.1.0
 FROM ${OPENSANDBOX_EXECD_IMAGE} AS execd
 
 FROM oven/bun:1.3.14-debian
@@ -47,4 +47,3 @@ HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=6 \
   CMD ["bun", "-e", "const r=await fetch('http://127.0.0.1:9010/health');if(!r.ok)process.exit(1)"]
 
 ENTRYPOINT ["/usr/bin/tini", "-g", "--", "/usr/local/bin/opencode-execd-entrypoint"]
-
