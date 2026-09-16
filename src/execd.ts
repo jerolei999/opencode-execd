@@ -15,7 +15,7 @@ type CommandStatus = {
 }
 
 export type ExecdRunInput = {
-  readonly argv: string[]
+  readonly command: string
   readonly cwd: string
   readonly env: Record<string, string>
   readonly timeoutMs?: number
@@ -75,7 +75,7 @@ export class ExecdClient {
         method: "POST",
         headers: this.#headers,
         body: JSON.stringify({
-          argv: input.argv,
+          command: input.command,
           cwd: input.cwd,
           background: false,
           ...(input.timeoutMs === undefined ? {} : { timeout: input.timeoutMs }),
@@ -214,4 +214,3 @@ function parseEvent(frame: string): StreamEvent | undefined {
   if (!payload || payload.startsWith(":")) return
   return JSON.parse(payload) as StreamEvent
 }
-

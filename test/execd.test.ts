@@ -40,7 +40,7 @@ describe("ExecdClient", () => {
     servers.push(server)
 
     const result = await new ExecdClient({ url: server.url.toString(), accessToken: "secret" }).run({
-      argv: ["/bin/bash", "-lc", "build"],
+      command: "exec '/bin/bash' -lc 'build'",
       cwd: "/workspace/project",
       env: { CI: "1" },
       timeoutMs: 5000,
@@ -49,7 +49,7 @@ describe("ExecdClient", () => {
 
     expect(received.token).toBe("secret")
     expect(commandBody).toEqual({
-      argv: ["/bin/bash", "-lc", "build"],
+      command: "exec '/bin/bash' -lc 'build'",
       cwd: "/workspace/project",
       background: false,
       timeout: 5000,
@@ -93,7 +93,7 @@ describe("ExecdClient", () => {
     servers.push(server)
 
     const result = await new ExecdClient({ url: server.url.toString(), accessToken: "secret" }).run({
-      argv: ["sh", "-lc", "output"],
+      command: "exec 'sh' -lc 'output'",
       cwd: "/workspace",
       env: {},
       maxOutputBytes: 5,
@@ -135,7 +135,7 @@ describe("ExecdClient", () => {
 
     const controller = new AbortController()
     const running = new ExecdClient({ url: server.url.toString(), accessToken: "secret" }).run({
-      argv: ["sh", "-lc", "sleep 60"],
+      command: "exec 'sh' -lc 'sleep 60'",
       cwd: "/workspace",
       env: {},
       signal: controller.signal,

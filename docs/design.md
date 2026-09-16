@@ -36,7 +36,7 @@ The Bridge remains unchanged and command bytes do not pass through it. The plugi
 
 1. Validate authentication, request shape, session concurrency, capacity, and workspace containment.
 2. Reserve a slot and create the session's private home/temp directories.
-3. Send `argv: [shell, "-lc", command]`, cwd, environment, and timeout to `execd`.
+3. Safely quote `shell -lc command`, then send it with cwd, environment, and timeout to the pinned `execd` command API.
 4. Parse both standards-compliant SSE `data:` frames and legacy bare-JSON frames. Accumulate stdout, stderr, and interleaved output with bounded memory.
 5. Read the final exit code from `GET /command/status/{commandID}`.
 6. On client cancellation, timeout, release, or shutdown, cancel the HTTP stream and call `DELETE /command?id={commandID}`.

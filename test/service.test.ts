@@ -37,7 +37,9 @@ describe("WorkerService", () => {
     const unauthorized = await service.fetch(executeRequest({ root, cwd }))
     expect(unauthorized.status).toBe(401)
 
-    const response = await service.fetch(executeRequest({ root, cwd }, "worker-secret"))
+    const response = await service.fetch(
+      executeRequest({ root, cwd, command: `printf '%s' "it's"` }, "worker-secret"),
+    )
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({
       sandboxID: "node-1",
@@ -49,7 +51,7 @@ describe("WorkerService", () => {
       stdoutTruncated: false,
       stderrTruncated: false,
     })
-    expect(delegated?.argv).toEqual(["/bin/bash", "-lc", "bun test"])
+    expect(delegated?.command).toBe(`exec '/bin/bash' -lc 'printf '"'"'%s'"'"' "it'"'"'s"'`)
     expect(delegated?.cwd).toBe(cwd)
     expect(delegated?.env.USER_VALUE).toBe("visible")
     expect(delegated?.env.EXECD_ACCESS_TOKEN).toBeUndefined()
@@ -151,6 +153,7 @@ function executeRequest(
     sessionID: string
     root: string
     cwd: string
+    command: string
   }>,
   token?: string,
 ) {
@@ -164,7 +167,7 @@ function executeRequest(
       workspaceID: "workspace-1",
       root: override.root,
       cwd: override.cwd,
-      command: "bun test",
+      command: override.command ?? "bun test",
       shell: "/bin/bash",
       env: { USER_VALUE: "visible", EXECD_ACCESS_TOKEN: "must-not-win" },
       timeoutMs: 5000,
@@ -185,4 +188,3 @@ function result(): ExecdRunResult {
     stderrTruncated: false,
   }
 }
-

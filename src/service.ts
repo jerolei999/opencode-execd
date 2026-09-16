@@ -152,7 +152,7 @@ export class WorkerService {
 
     try {
       const result = await this.#execd.run({
-        argv: [resolveShell(input.shell), "-lc", input.command],
+        command: `exec ${quote(resolveShell(input.shell))} -lc ${quote(input.command)}`,
         cwd,
         env: {
           ...baseEnvironment(),
@@ -253,6 +253,10 @@ function resolveShell(requested = "/bin/bash") {
   if (path.isAbsolute(requested) && existsSync(requested)) return requested
   const name = path.basename(requested)
   return [`/bin/${name}`, `/usr/bin/${name}`, "/bin/sh"].find(existsSync) ?? "/bin/sh"
+}
+
+function quote(value: string) {
+  return `'${value.replaceAll("'", `'"'"'`)}'`
 }
 
 function baseEnvironment() {
