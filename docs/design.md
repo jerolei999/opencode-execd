@@ -2,7 +2,7 @@
 
 ## Goal
 
-Provide an OpenCode plugin plus a deployable, fixed-image SaaS execution service. The plugin transparently replaces OpenCode's built-in `bash` tool and delegates every shell command to a service backed by a colocated OpenSandbox `execd` process. A service replica may execute several OpenCode sessions concurrently. CubeFS supplies the shared workspace, so the worker only validates and forwards absolute workspace paths.
+Provide the deployable, fixed-image SaaS execution service behind the OpenCode plugin. The plugin itself is maintained in the separate [opencode-execd-plugin](https://github.com/jerolei999/opencode-execd-plugin) repository; this service transparently receives every shell command from that plugin and delegates it to a colocated OpenSandbox `execd` process. A service replica may execute several OpenCode sessions concurrently. CubeFS supplies the shared workspace, so the worker only validates and forwards absolute workspace paths.
 
 This project intentionally does not deploy the OpenSandbox control plane and does not create nested containers. It is designed for platforms that can deploy an ordinary private image but cannot grant a Docker socket, privileged mode, writable cgroups, or Kubernetes API access.
 
@@ -58,6 +58,8 @@ The practical controls are:
 Per-session hard CPU quotas require platform cgroups, separate containers, or a stronger runtime and are outside this design. Capacity is therefore load control, not a CPU quota.
 
 ## Compatibility
+
+The OpenCode-side plugin is maintained in the separate [opencode-execd-plugin](https://github.com/jerolei999/opencode-execd-plugin) repository and only depends on the contract below.
 
 The execution service retains the small worker HTTP contract:
 
