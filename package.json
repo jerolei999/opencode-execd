@@ -1,0 +1,27 @@
+{
+  "name": "opencode-execd",
+  "version": "0.1.0",
+  "private": false,
+  "license": "MIT",
+  "files": [
+    "src/plugin.ts"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./src/plugin.ts"
+  },
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "^1.18.19",
+    "@types/bun": "^1.3.14",
+    "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=1.18.0"
+  }
+}

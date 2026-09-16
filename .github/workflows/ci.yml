@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - run: bun test
+      - run: bun run typecheck
+
+  image-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t opencode-execd:test .
+      - name: Execute a command through the packaged service
+        run: |
+          set -euo pipefail
+          docker run -d --name opencode-execd \
+            -e EXECD_ACCESS_TOKEN=execd-ci-secret \
+            -e OPENCODE_EXECD_WORKER_ACCESS_TOKEN=worker-ci-secret \
+            -v "$PWD:/workspace" \
+            -p 19010:9010 \
+            opencode-execd:test
+          trap 'docker logs opencode-execd; docker rm -f opencode-execd' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:19010/health >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          result=$(curl --fail --silent \
+            -H 'Authorization: Bearer worker-ci-secret' \
+            -H 'Content-Type: application/json' \
+            --data '{"sessionID":"ci","workspaceID":"ci","root":"/workspace","cwd":"/workspace","command":"test -z \"${EXECD_ACCESS_TOKEN:-}\" && test -z \"${OPENCODE_EXECD_WORKER_ACCESS_TOKEN:-}\" && printf smoke-ok","shell":"/bin/bash","env":{},"timeoutMs":5000,"maxOutputBytes":1024}' \
+            http://127.0.0.1:19010/execute)
+          test "$(printf '%s' "$result" | jq -r .exitCode)" = "0"
+          test "$(printf '%s' "$result" | jq -r .output)" = "smoke-ok"
