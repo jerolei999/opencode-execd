@@ -37,10 +37,11 @@ jobs:
             fi
             sleep 1
           done
-          result=$(curl --fail --silent \
+          result=$(curl --silent --show-error \
             -H 'Authorization: Bearer worker-ci-secret' \
             -H 'Content-Type: application/json' \
             --data '{"sessionID":"ci","workspaceID":"ci","root":"/workspace","cwd":"/workspace","command":"test -z \"${EXECD_ACCESS_TOKEN:-}\" && test -z \"${OPENCODE_EXECD_WORKER_ACCESS_TOKEN:-}\" && printf smoke-ok","shell":"/bin/bash","env":{},"timeoutMs":5000,"maxOutputBytes":1024}' \
             http://127.0.0.1:19010/execute)
+          printf '%s\n' "$result"
           test "$(printf '%s' "$result" | jq -r .exitCode)" = "0"
           test "$(printf '%s' "$result" | jq -r .output)" = "smoke-ok"

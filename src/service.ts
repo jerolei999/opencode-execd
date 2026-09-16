@@ -110,6 +110,7 @@ export class WorkerService {
     } catch (error) {
       if (isAbort(error)) return json({ error: "execution cancelled" }, 499)
       if (error instanceof RequestError) return json({ error: error.message }, error.status)
+      console.error("[opencode-execd] execution failed", error)
       return json({ error: error instanceof Error ? error.message : String(error) }, 500)
     }
   }
@@ -288,4 +289,3 @@ function isAbort(error: unknown) {
 function json(value: unknown, status = 200) {
   return Response.json(value, { status })
 }
-
