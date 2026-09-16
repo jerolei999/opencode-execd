@@ -104,6 +104,8 @@ Accepts the existing OpenCode worker-shaped request:
 
 The service rejects roots outside `OPENCODE_WORKSPACE_ROOT`, workdirs outside the request root, concurrent commands for the same session, and requests beyond node capacity.
 
+A non-zero command exit is a normal result: the response is `200` with `exitCode` and the captured output, not an HTTP error. Error responses are reserved for admission failures, transport failures, and commands that `execd` could not start at all.
+
 ### `POST /release`
 
 Cancels an active command for the session and removes its private home/temp directory.

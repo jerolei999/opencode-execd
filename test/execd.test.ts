@@ -8,7 +8,7 @@ afterEach(() => {
 })
 
 describe("ExecdClient", () => {
-  test("runs argv through execd and combines legacy and standard SSE frames", async () => {
+  test("runs the quoted command through execd and combines legacy and standard SSE frames", async () => {
     let commandBody: unknown
     const received: { token?: string | null } = {}
     const server = Bun.serve({
@@ -22,17 +22,22 @@ describe("ExecdClient", () => {
           return new Response(
             [
               JSON.stringify({ type: "init", text: "cmd-1" }),
-              `data: ${JSON.stringify({ type: "stdout", text: "hello " })}`,
+              `data: ${JSON.stringify({ type: "stdout", text: "hello" })}`,
               JSON.stringify({ type: "stderr", text: "warn" }),
               JSON.stringify({ type: "stdout", text: "world" }),
-              JSON.stringify({ type: "execution_complete", execution_time: 12 }),
+              // execd v1.1.0 ends a non-zero exit with an error event whose text is the exit code,
+              // and it never sends execution_complete for that case.
+              JSON.stringify({
+                type: "error",
+                error: { ename: "CommandExecError", evalue: "7", traceback: ["exit status 7"] },
+              }),
               "",
             ].join("\n\n"),
             { headers: { "content-type": "text/event-stream" } },
           )
         }
         if (request.method === "GET" && url.pathname === "/command/status/cmd-1") {
-          return Response.json({ id: "cmd-1", running: false, exit_code: 7 })
+          return Response.json({ id: "cmd-1", running: false, exit_code: 7, error: "7" })
         }
         return new Response("not found", { status: 404 })
       },
@@ -58,9 +63,9 @@ describe("ExecdClient", () => {
     expect(result).toEqual({
       commandID: "cmd-1",
       exitCode: 7,
-      stdout: "hello world",
-      stderr: "warn",
-      output: "hello warnworld",
+      stdout: "hello\nworld\n",
+      stderr: "warn\n",
+      output: "hello\nwarn\nworld\n",
       outputTruncated: false,
       stdoutTruncated: false,
       stderrTruncated: false,
@@ -105,6 +110,76 @@ describe("ExecdClient", () => {
     expect(result.stdoutTruncated).toBe(true)
     expect(result.stderrTruncated).toBe(true)
     expect(result.outputTruncated).toBe(true)
+  })
+
+  test("restores the line terminators that execd strips from each output event", async () => {
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch(request) {
+        const url = new URL(request.url)
+        if (request.method === "POST" && url.pathname === "/command") {
+          return new Response(
+            [
+              JSON.stringify({ type: "init", text: "cmd-5" }),
+              JSON.stringify({ type: "stdout", text: "first" }),
+              JSON.stringify({ type: "stdout", text: "second" }),
+              JSON.stringify({ type: "execution_complete" }),
+              "",
+            ].join("\n\n"),
+          )
+        }
+        if (url.pathname === "/command/status/cmd-5") {
+          return Response.json({ id: "cmd-5", running: false, exit_code: 0 })
+        }
+        return new Response("not found", { status: 404 })
+      },
+    })
+    servers.push(server)
+
+    const result = await new ExecdClient({ url: server.url.toString(), accessToken: "secret" }).run({
+      command: "exec '/bin/bash' -lc 'two lines'",
+      cwd: "/workspace",
+      env: {},
+    })
+
+    expect(result.stdout).toBe("first\nsecond\n")
+    expect(result.output).toBe("first\nsecond\n")
+  })
+
+  test("reports a failure when execd records no exit code", async () => {
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch(request) {
+        const url = new URL(request.url)
+        if (request.method === "POST" && url.pathname === "/command") {
+          return new Response(
+            [
+              JSON.stringify({ type: "init", text: "cmd-4" }),
+              JSON.stringify({
+                type: "error",
+                error: { ename: "CommandExecError", evalue: "fork/exec /bin/bash: no such file or directory" },
+              }),
+              "",
+            ].join("\n\n"),
+          )
+        }
+        if (url.pathname === "/command/status/cmd-4") {
+          return Response.json({ id: "cmd-4", running: false, error: "fork/exec /bin/bash: no such file or directory" })
+        }
+        return new Response("not found", { status: 404 })
+      },
+    })
+    servers.push(server)
+
+    const running = new ExecdClient({ url: server.url.toString(), accessToken: "secret" }).run({
+      command: "exec '/bin/bash' -lc 'build'",
+      cwd: "/workspace",
+      env: {},
+    })
+
+    await expect(running).rejects.toThrow(/fork\/exec/)
   })
 
   test("interrupts the initialized execd command when aborted", async () => {

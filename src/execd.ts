@@ -93,13 +93,11 @@ export class ExecdClient {
           return false
         }
         if (event.type === "stdout" && event.text) {
-          stdout.append(event.text)
-          output.append(event.text)
+          appendLine(stdout, output, event.text)
           return false
         }
         if (event.type === "stderr" && event.text) {
-          stderr.append(event.text)
-          output.append(event.text)
+          appendLine(stderr, output, event.text)
           return false
         }
         if (event.type === "error") {
@@ -111,15 +109,24 @@ export class ExecdClient {
 
       if (!commandID) throw new Error("execd event stream did not provide a command ID")
       const status = await this.#status(commandID, input.signal)
-      if (executionError) throw new Error(executionError)
-      if (status.error) throw new Error(status.error)
-      if (status.exit_code === undefined || status.exit_code === null) {
-        throw new Error(`execd command ${commandID} completed without an exit code`)
+      // execd reports every non-zero exit both as an `error` event and as `status.error`
+      // whose only content is the exit code itself (traceback `exit status N`), and it
+      // skips `execution_complete`. A non-zero exit is a normal command result, so the
+      // recorded exit code wins and the error text only matters when execd never
+      // produced one, for example when the shell could not be started at all.
+      const exitCode = status.exit_code ?? undefined
+      if (exitCode === undefined) {
+        const reason = status.error ?? executionError
+        throw new Error(
+          reason
+            ? `execd command ${commandID} failed: ${reason}`
+            : `execd command ${commandID} completed without an exit code`,
+        )
       }
 
       return {
         commandID,
-        exitCode: status.exit_code,
+        exitCode,
         stdout: stdout.text(),
         stderr: stderr.text(),
         output: output.text(),
@@ -145,6 +152,13 @@ export class ExecdClient {
     }
     throw new Error(`execd command ${commandID} still reports running after completion`)
   }
+}
+
+// execd streams one newline-stripped line per stdout/stderr event, so the line terminator
+// is restored here. Without it, multi-line output such as `bun test` collapses into one run.
+function appendLine(stream: BoundedOutput, merged: BoundedOutput, text: string) {
+  stream.append(`${text}\n`)
+  merged.append(`${text}\n`)
 }
 
 class BoundedOutput {

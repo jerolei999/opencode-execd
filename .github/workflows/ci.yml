@@ -21,7 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t opencode-execd:test .
-      - name: Execute a command through the packaged service
+      - name: Execute commands through the packaged service
         run: |
           set -euo pipefail
           docker run -d --name opencode-execd \
@@ -45,3 +45,13 @@ jobs:
           printf '%s\n' "$result"
           test "$(printf '%s' "$result" | jq -r .exitCode)" = "0"
           test "$(printf '%s' "$result" | jq -r .output)" = "smoke-ok"
+          # execd v1.1.0 reports a non-zero exit as both an error event and status.error,
+          # so a failing command must still come back as a normal result with its exit code.
+          failing=$(curl --silent --show-error \
+            -H 'Authorization: Bearer worker-ci-secret' \
+            -H 'Content-Type: application/json' \
+            --data '{"sessionID":"ci-fail","workspaceID":"ci","root":"/workspace","cwd":"/workspace","command":"printf failed >&2; exit 7","shell":"/bin/bash","env":{},"timeoutMs":5000,"maxOutputBytes":1024}' \
+            http://127.0.0.1:19010/execute)
+          printf '%s\n' "$failing"
+          test "$(printf '%s' "$failing" | jq -r .exitCode)" = "7"
+          test "$(printf '%s' "$failing" | jq -r .stderr)" = "failed"
