@@ -126,9 +126,13 @@ export class WorkerService {
 
     const root = path.resolve(input.root)
     const cwd = path.resolve(input.cwd)
-    if (!contained(this.#workspaceRoot, root) || !contained(root, cwd)) {
+    if (!contained(this.#workspaceRoot, root)) {
       this.#reserved.delete(input.sessionID)
-      throw new RequestError(400, `workspace path is outside worker root ${this.#workspaceRoot}`)
+      throw new RequestError(400, `workspace root ${root} is outside worker root ${this.#workspaceRoot}`)
+    }
+    if (!contained(root, cwd)) {
+      this.#reserved.delete(input.sessionID)
+      throw new RequestError(400, `cwd ${cwd} is outside workspace root ${root}`)
     }
 
     const sessionDir = path.join(

@@ -57,10 +57,21 @@ describe("WorkerService", () => {
     expect(delegated?.env.EXECD_ACCESS_TOKEN).toBeUndefined()
     expect(delegated?.env.OPENCODE_SESSION_ID).toBe("session-1")
 
-    const outside = await service.fetch(
-      executeRequest({ root, cwd: path.join(workspaceRoot, "other") }, "worker-secret"),
+    const outsideRoot = path.resolve(path.join(workspaceRoot, "..", "other"))
+    const outsideWorker = await service.fetch(executeRequest({ root: outsideRoot, cwd: outsideRoot }, "worker-secret"))
+    expect(outsideWorker.status).toBe(400)
+    expect(await outsideWorker.json()).toEqual({
+      error: `workspace root ${outsideRoot} is outside worker root ${workspaceRoot}`,
+    })
+
+    const outsideRootDir = path.join(workspaceRoot, "other")
+    const outsideCwd = await service.fetch(
+      executeRequest({ root, cwd: outsideRootDir }, "worker-secret"),
     )
-    expect(outside.status).toBe(400)
+    expect(outsideCwd.status).toBe(400)
+    expect(await outsideCwd.json()).toEqual({
+      error: `cwd ${outsideRootDir} is outside workspace root ${root}`,
+    })
   })
 
   test("enforces capacity and one active command per session", async () => {
